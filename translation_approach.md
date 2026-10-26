@@ -442,6 +442,73 @@ Approach:
       begins with `<p>`, serialize it as HTML. Otherwise, leave it as
       CommonMark. Combine each list item with an intervening newline.
 
+### Tasks
+
+Task lists are translated to GitHub Flavored Markdown using HTML's `<ul>` and `<li>`
+tags to designate unordered lists and list elements (tasks), respectively. This
+frames each of the tasks of the task list as parsable, bulleted elements.
+
+Checkboxes, another element of task lists, are also accounted for when translating HTML to GitHub Flavored Markdown. Checkboxes represent completion indicators regarding tasks.
+When placed between the `<li>` tags, the `<input type="checkbox">` element denotes a checkbox preceding the task description and represents the completion
+of the task listed within the `<li>` element.
+To mark the box as checked, a `checked` flag must be placed after
+`"checkbox"` to classify the input as checked. When translating to GFM syntax, an almost identical approach is used with marked and unmarked checkboxes
+both being represented with `[x]` and `[ ]` symbols respectively.
+
+
+To summarize, htmd's translation behavior for task lists is as follows:
+
+| Description        | HTML in                                  | Faithful expected       |
+| ------------------ | ---------------------------------------- | ----------------------- |
+| Unchecked box      | `<ul> <li><input type="checkbox"> Complete report</li></ul>`                |    `- [ ] Complete report`                |
+| Checked box        |`<ul> <li><input type="checkbox" checked> Complete report</li></ul>`        |    `- [x] Complete report`                |
+| Nested task      |`<ul><li> <input type="checkbox"> Homework <ul> <li><input type="checkbox" checked> Draft paper </li></ul></li></ul>`|`- [ ] Homework⏎␣␣- [x] Draft paper`|
+|Disabled task    |`<ul> <li><input type="checkbox" checked disabled> Complete report</li></ul>`|`- [x] Complete report` (the disabled tag affects whether the element is interactive or not)|
+|Mixed list |`<ul><li><input type="checkbox" checked> Write report</li><li>Submit materials</li><li><input type="checkbox"> Review feedback</li></ul>`|`- [x] Write report⏎- Submit materials⏎- [ ] Review feedback`|
+|Ordered list |`<ol> <li><input type="checkbox" checked> Complete report</li> <li><input type="checkbox"> Review report </li></ol>` |`1. [x] Complete report⏎2. [ ] Review report` |
+|Formatted lists| `<ul> <li><input type="checkbox" checked> Read <strong>chapter 3</strong></li> </ul>`|`- [x] Read **chapter 3**`|
+|Element with `<p>` wrapper|`<ul> <li><p><input type="checkbox"> Complete report</p></li></ul>` | `- [ ] Complete report`|
+| Checkbox after task| `<ul> <li> Complete report <input type = "checkbox"></li></ul>`| `- Complete report` |
+| Two checkboxes in a single element (not nested element)|`<ul> <li><input type="checkbox"> <input type="checkbox"> Complete report</li></ul>` | |
+
+Regarding Faithful and Pure mode differences, any attributes that are not related
+to the task description or the formatting of the HTML and GFM are discarded in both modes as any attributes besides the task description and formatting are not considered relevant.
+
+It should be noted that the task list output must respect settings such as `bullet_list_marker`
+and `ul_bullet_spacing` settings. In the above test cases, it is assumed that `bullet_list_marker`
+is set to `BulletListMarker::Dash`, `ul_bullet_spacing` is set to `1`
+and `ol_number_spacing` is set to `1`. Other
+configurations should retain their existing behavior.
+It should also be noted that although the above test cases utilize `-` dash symbols
+to signify task elements in Markdown, htmd and Git Flavored Markdown provide many
+different symbols to denote task and list elements such as asterisks and plus signs.
+
+Approach:
+
+  * To identify a task list, htmd recognizes task list items by the task contained within `<li>` tags as well as the presence of 
+  `<input type = "checkbox">` tags within `<li>` elements followed by task descriptions. `<li>` elements containing 
+  paragraph `<p>` wrappers around the task description and checkbox tag are also considered valid. Recognition is conducted on an element by element basis.
+
+  * If a list element is determined to not represent a task list element, it is judged using the standard list conversion rules described in this specification.
+
+  * When determining an element's completion status, the presence of the `"checked"` flag is checked. If this flag is absent, the task is deemed incomplete.
+
+  * Task descriptions and nested list structure/indents are preserved.
+
+  * A list element with the task positioned before the `<input type="checkbox">` tag is not considered a task element and the checkbox tag is disregarded.
+
+  * A task checkbox is replaced by the GitHub Flavored Markdown task marker rather than emitted a second time as raw HTML. Checkboxes that do not qualify
+  do not cause the element to be converted into a task. Instead, the regular list (`-`,`*`,`1.`)
+  marker is placed at the beginning of the list item's first paragraph.
+
+  * As for leading indentations, they are just considered to be whitespace and do
+  not affect recognition of task list elements.
+
+  * As for multiple checkboxes within a single `<li>` element, they are not considered valid or to be task list elements as task list elements only require a single
+  checkbox. It should be noted however that this rule does not apply to nested, or
+  parent-child list elements, only elements with more than one checkbox within the 
+  task's own first paragraph.
+
 Inlines
 -------
 
