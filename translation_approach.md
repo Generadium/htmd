@@ -442,7 +442,7 @@ Approach:
       begins with `<p>`, serialize it as HTML. Otherwise, leave it as
       CommonMark. Combine each list item with an intervening newline.
 
-### Tasks
+#### Tasks
 
 Task lists are translated to GitHub Flavored Markdown using HTML's `<ul>` and `<li>`
 tags to designate unordered lists and list elements (tasks), respectively. This
@@ -463,13 +463,12 @@ To summarize, htmd's translation behavior for task lists is as follows:
 | Unchecked box      | `<ul> <li><input type="checkbox"> Complete report</li></ul>`                |    `- [ ] Complete report`                |
 | Checked box        |`<ul> <li><input type="checkbox" checked> Complete report</li></ul>`        |    `- [x] Complete report`                |
 | Nested task      |`<ul><li> <input type="checkbox"> Homework <ul> <li><input type="checkbox" checked> Draft paper </li></ul></li></ul>`|`- [ ] Homework⏎␣␣- [x] Draft paper`|
-|Disabled task    |`<ul> <li><input type="checkbox" checked disabled> Complete report</li></ul>`|`- [x] Complete report` (the disabled tag affects whether the element is interactive or not)|
 |Mixed list |`<ul><li><input type="checkbox" checked> Write report</li><li>Submit materials</li><li><input type="checkbox"> Review feedback</li></ul>`|`- [x] Write report⏎- Submit materials⏎- [ ] Review feedback`|
 |Ordered list |`<ol> <li><input type="checkbox" checked> Complete report</li> <li><input type="checkbox"> Review report </li></ol>` |`1. [x] Complete report⏎2. [ ] Review report` |
 |Formatted lists| `<ul> <li><input type="checkbox" checked> Read <strong>chapter 3</strong></li> </ul>`|`- [x] Read **chapter 3**`|
 |Element with `<p>` wrapper|`<ul> <li><p><input type="checkbox"> Complete report</p></li></ul>` | `- [ ] Complete report`|
-| Checkbox after task| `<ul> <li> Complete report <input type = "checkbox"></li></ul>`| `- Complete report` |
-| Two checkboxes in a single element (not nested element)|`<ul> <li><input type="checkbox"> <input type="checkbox"> Complete report</li></ul>` | |
+|Checkbox after task| `<ul> <li> Complete report <input type = "checkbox"></li></ul>`| `- Complete report` |
+|Two checkboxes in a single element (not nested element)|`<ul> <li><input type="checkbox"> <input type="checkbox"> Complete report</li></ul>` |`- Complete report` |
 
 Regarding Faithful and Pure mode differences, any attributes that are not related
 to the task description or the formatting of the HTML and GFM are discarded in both modes as any attributes besides the task description and formatting are not considered relevant.
