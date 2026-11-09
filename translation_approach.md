@@ -904,9 +904,9 @@ CI job may cap time instead of count (five minutes, then stop).
    `table`/`thead`/`tbody`/`tr`/`th`/`td`, `span` with math classes, and
    elements this document writes as raw HTML). Fill text nodes from a pool
    of ASCII, combining marks, `$`, `|`, `*`, `_`, `` ` ``, `<`, `&`, and
-   newlines. Serialize text nodes with HTML escaping (`<` as `&lt;`, `&` as
-   `&amp;`) except when the case intentionally emits a named character
-   reference from the table below. Nest at most 8 levels. Do not nest `<a>` in `<a>`; nested
+   newlines.    Serialize text-node content with HTML escaping (`<` as `&lt;`, `&` as
+   `&amp;`). The Ampersand row in the generator table intentionally contains
+   `&amp;`; do not double-escape it to `&amp;amp;`. Nest at most 8 levels. Do not nest `<a>` in `<a>`; nested
    anchors belong to stream 2. This stream is the one that may be checked
    for “valid HTML”: every open tag that this generator emits is closed,
    attributes are quoted, and the snippet is a fragment (no required
@@ -921,9 +921,11 @@ CI job may cap time instead of count (five minutes, then stop).
    (then reject above 8 for structured; broken stream may go to 32 and
    must still not stack-overflow), and the generator table below.
 
-Mutations on a seed: delete a slice, insert a tag or character from the
-pool, duplicate a subtree, swap two siblings, replace a named character
-reference with its raw character or the reverse.
+Mutations operate on the string, not on a parsed DOM. Operations on a seed:
+delete a byte slice, insert a tag or character from the pool, duplicate a
+tag-delimited substring, swap two adjacent tag-delimited sibling
+substrings, replace a named character reference with its raw character or
+the reverse.
 
 #### Oracle
 
@@ -936,7 +938,7 @@ the finding:
 | 1 | Process abort, panic, or timeout | **Yes.** Save the input. |
 | 2 | `convert` returns `Err` | **Yes.** `html_to_tree` currently always returns `Ok`, so `convert` does not return `Err`. This document names no input as an expected `io::Error`. A panic inside parsing or walking is still priority 1. |
 | 3 | Stream 1, and the case is a row in this document's tables (or `tests/translation_approach_tests.rs`) | **Yes** if Markdown ≠ Faithful expected (or the Pure column when the run set `TranslationMode::Pure`). |
-| 4 | Stream 1, not a table row | Write Faithful Markdown, then `render_markdown` from `tests/common/mod.rs`. Parse the **input** HTML and that round-trip HTML as fragments under the same context with `html5ever`. **Yes** if those DOM fragments are not equivalent (same elements and text; parser-inserted document wrappers, attribute order, and implied `<tbody>` may differ). Do not strcmp the `round_trip` source string, and do not demand byte-identical Markdown. |
+| 4 | Stream 1, not a table row | Write Faithful Markdown, then `render_markdown` from `tests/common/mod.rs`. Parse the **input** HTML and that round-trip HTML as fragments with `html5ever`, using `<div>` as the context element for both. **Yes** if those DOM fragments are not equivalent (same elements and text; parser-inserted document wrappers, attribute order, and implied `<tbody>` may differ). Do not strcmp the `round_trip` source string, and do not demand byte-identical Markdown. |
 | 5 | Stream 2 (broken HTML) | Only priorities 1–2. There is no unique “correct Markdown” for garbage. |
 
 Do not flag a difference from turndown.js unless the case already lives in
@@ -975,9 +977,10 @@ cargo build
 ```
 
 The fuzzer itself is a later binary or `cargo test` target; this section is
-the spec for that target. `cargo test` must keep passing. A fuzzer finding
-is a failing test case added next to the existing tables, not a log line
-that is ignored.
+the spec for that target. A fuzzer finding is added to the existing test
+tables as an `#[ignore]` test until the bug is confirmed fixed; it must not
+disappear as a silent log line. `cargo test` (without `--ignored`) must keep
+passing.
 
 Non-goals: mutating Markdown (htmd reads HTML); fuzzing `html5ever` in
 isolation; a second HTML parser as a “validator” of stream 2; claiming
