@@ -1,6 +1,6 @@
 # LLM review — Fuzzer section
 
-Each round prompted an LLM with `Review the section named "Fuzzer" in translation_approach.md`; strikethrough indicates LLM output that I deemed incorrect or irrelevant. Round 1 used Grok 4.6; Round 2 used GPT-5.5; Round 3 used Claude Sonnet 4.6; Round 4 used Grok 4.6.
+Each round prompted an LLM with `Review the section named "Fuzzer" in translation_approach.md`; strikethrough indicates LLM output that I deemed incorrect or irrelevant. Round 1 used Grok 4.6; Round 2 used GPT-5.5; Round 3 used Claude Sonnet 4.6; Round 4 used Grok 4.6; Round 5 used Gemini 2.5 Flash; Round 6 used Claude Sonnet 4.6.
 
 The LLM must not edit the spec in the same step as the review. Spec fixes from applied findings are in `translation_approach.md` (`### Fuzzer`).
 
@@ -13,9 +13,11 @@ The LLM must not edit the spec in the same step as the review. Spec fixes from a
 | 2 (used GPT-5.5)           | 4        | Structured text nodes are serialized with HTML escaping; priority 4 compares parsed fragments under one context and ignores parser-inserted wrappers; empty and whitespace payloads explicitly treat `Err` as a finding; Comment / CDATA row points to this document's specification tables, not the generator table itself                                                                                                                                                                                         |
 | 3 (used Claude Sonnet 4.6) | 4        | Mutations are string-level (not DOM-level); fragment context element named as `<div>`; finding storage changed to `#[ignore]` test (reconciles "keep passing" with "failing test case"); `&` double-escaping exception reworded to remove ambiguous "from the table below" phrase                                                                                                                                                                                                                                   |
 | 4 (used Grok 4.6)          | 4        | Stream 1 generator-table payloads stay verbatim (raw `<` in `"<p>3 < 4</p>"`); stream 1 root must parse under `<div>` (no bare `td`/`tr`/`th`/`li`); tag-delimited substring defined, skip duplicate/swap on unmatched tags; Pure run only for spec-table rows with a Pure expected column |
+| 5 (used Gemini 2.5 Flash)  | 4        | Stream class at oracle time via structured grammar, not mutation provenance; priority 3 only on specification tables with Expected, not generator-table rows alone; priority 4 DOM equivalence defined; corpus seeds limited to those specification tables |
+| 6 (used Claude Sonnet 4.6) | 2        | Void/self-closing tags in tag-delimited mutations; CI time cap is wall-clock for the whole fuzz job |
 
 
-Compile/run (`cargo build` / `cargo test` and the prompt *Verify that you can compile and run the project in the current git repo.*) is a later step, after further rounds.
+Compile/run (`cargo build` / `cargo test` and the prompt *Verify that you can compile and run the project in the current git repo.*) is a later step, after further LLM rounds.
 
 ## Round 1
 
@@ -44,12 +46,14 @@ Model: GPT-5.5. Prompt: `Review the section named "Fuzzer" in translation_approa
 
 Numbered findings; only issues where two implementers of this section would diverge.
 
-1. Structured text containing `<` and `&`. Stream 1 says text nodes come from a pool including `<` and `&`, and also says every open tag is closed and the stream may be checked as valid HTML. One implementer escapes text nodes as `<` / `&`; another writes raw `<` / `&` and creates broken HTML inside stream 1.
+1. Structured text containing `<` and `&`. Stream 1 says text nodes come from a pool including `<` and `&`, and also says every open tag is closed and the stream may be checked as valid HTML. One implementer escapes text nodes as `&lt;` / `&amp;`; another writes raw `<` / `&` and creates broken HTML inside stream 1.
 2. Priority 4 DOM comparison context. The section says parse the input HTML and round-trip HTML with `html5ever`, but the fuzzer input is a fragment. One implementer compares full parser documents with inserted `<html>` / `<body>` wrappers; another compares fragment children under a fixed context. Wrapper insertion can become the finding instead of an htmd mismatch.
 3. Empty and whitespace-only rows. The table says “Must return `Ok`, not panic,” while the oracle already says any `Err` is a priority 2 finding. One implementer records `Err` for these rows as a finding; another reads the row as only forbidding panic.
 4. Comment / CDATA expected-output escape hatch. The row says “if treated as a table row in this file,” but the row itself is in the generator table. One implementer applies only priorities 1–2 to the listed payloads; another looks for expected Markdown in this document's specification tables.
 
 ~~5. Require a fixed random seed and publish the seed value in the spec.~~ Reproducibility is useful for an implementation, but this strategy document only needs saved failing inputs; the Run section already says a finding becomes a failing test case.
+
+All four findings applied.
 
 ## Round 3
 
@@ -84,3 +88,31 @@ Numbered findings; only issues where two implementers of this section would dive
 ~~6. Add `cargo fuzz` or a `[[bin]]` now.~~ The Run section still says the fuzzer is a later binary or `cargo test` target.
 
 All four findings applied.
+
+## Round 5
+
+Model: Gemini 2.5 Flash. Prompt: `Review the section named "Fuzzer" in translation_approach.md`. Strikethrough indicates LLM output deemed incorrect or irrelevant.
+
+Numbered findings; only issues where two implementers of this section would diverge.
+
+1. Stream class after mutation. Stream 2 mutates stream 1. The oracle branches on “Stream 1” vs “Stream 2” but never says whether class follows how the input was produced or how it reads at check time. One implementer tags every mutation output as stream 2; another reclassifies mutated strings that still match the structured grammar as stream 1.
+2. Priority 3 vs generator table. Priority 3 names “a row in this document's tables,” and the generator table is in the same file. Rows such as Math span say “expected follows the Math section” without an Expected cell beside them. One implementer runs priority 3 on those rows; another applies only priorities 1–2 unless the payload also appears in a specification table with Expected output.
+3. Priority 4 equivalence. “Same elements and text” does not say whether attributes matter, whether text is normalized, or how to compare implied structure. One implementer strcmp’s serialized HTML; another walks trees with ad hoc rules.
+4. Corpus seed tables. “HTML-in / Faithful-expected tables in this file” could mean every Markdown table in `translation_approach.md`. One implementer loads hundreds of incidental tables; another only feature sections that pair HTML input with Expected Markdown.
+
+~~5. Require exactly 50% stream 1 / stream 2.~~ Mixing is already required. A fixed ratio is extra.
+
+All four findings applied.
+
+## Round 6
+
+Model: Claude Sonnet 4.6. Prompt: `Review the section named "Fuzzer" in translation_approach.md`. Strikethrough indicates LLM output deemed incorrect or irrelevant.
+
+Numbered findings; only issues where two implementers of this section would diverge.
+
+1. Tag-delimited substring on void tags. The mutation definition requires an opening tag through its matching closer. For `br`, `hr`, and `img`, one implementer treats the opening tag alone as the substring; another waits for a `</br>` that never comes and skips all duplicate/swap mutations on common structured seeds.
+2. Five-minute CI cap. “A shorter CI job may cap time instead of count (five minutes, then stop)” does not say whether five minutes is the whole fuzz job or five minutes per input. One implementer stops the entire run at 5:00; another times out each case at five minutes and never reaches 10,000 cases.
+
+~~3. Mandate libFuzzer now.~~ The Run section still defers the binary.
+
+Both findings applied.

@@ -891,13 +891,18 @@ Pure run only to check a specification-table row (not the generator table)
 that has a Pure expected column. Do not go through the CLI or the network.
 The 2-second timeout may use a thread or a child of the test binary, not
 the `htmd` CLI. Seed the corpus from HTML string literals in `tests/*.rs`
-and from the HTML-in / Faithful-expected tables in this file.
+and from this document's **specification tables**: feature sections whose
+tables pair an HTML (or Input) column with an Expected column for
+Faithful mode. Do not seed from the generator table in this section or
+from tables that only document edge cases without Expected output.
 
 #### Generator
 
 Two streams. Both are UTF-8 strings passed to `convert`. Cap each input at
 64 KiB. Produce at least 10,000 cases per run, mixing the streams; a shorter
-CI job may cap time instead of count (five minutes, then stop).
+CI job may cap **wall-clock time** for the whole fuzz run instead of count
+(five minutes total, then stop). The per-input oracle timeout remains 2
+seconds.
 
 1. **Structured HTML.** Build a small DOM as nested tags drawn from the
    elements this document specifies (`h1`–`h6`, `p`, `br`, `hr`, `em`,
@@ -929,7 +934,8 @@ CI job may cap time instead of count (five minutes, then stop).
 
 Mutations operate on the string, not on a parsed DOM. A tag-delimited
 substring is an opening tag through its matching closer in the seed
-string. Operations on a seed: delete a byte slice, insert a tag or
+string. Void elements (`br`, `hr`, `img`) count as opening tag through
+end of tag with no closer. Operations on a seed: delete a byte slice, insert a tag or
 character from the pool, duplicate a tag-delimited substring, swap two
 adjacent tag-delimited sibling substrings, replace a named character
 reference with its raw character or the reverse. If the seed has no
@@ -937,6 +943,10 @@ matching closer, skip duplicate and sibling-swap; still apply delete,
 insert, and named-reference replace.
 
 #### Oracle
+
+**Stream class at check time:** label an input **Stream 1** if it satisfies
+the structured HTML grammar in Generator stream 1 above (regardless of
+whether stream 2 mutations produced it). All other inputs are **Stream 2**.
 
 Call `convert` in a thread or a child of the test binary with a 2-second
 timeout per input. Classify the result in this order; the first match is
@@ -946,8 +956,8 @@ the finding:
 | --- | --- | --- |
 | 1 | Process abort, panic, or timeout | **Yes.** Save the input. |
 | 2 | `convert` returns `Err` | **Yes.** `html_to_tree` currently always returns `Ok`, so `convert` does not return `Err`. This document names no input as an expected `io::Error`. A panic inside parsing or walking is still priority 1. |
-| 3 | Stream 1, and the case is a row in this document's tables (or `tests/translation_approach_tests.rs`) | **Yes** if Markdown ≠ Faithful expected (or the Pure column when the run set `TranslationMode::Pure`). |
-| 4 | Stream 1, not a table row | Write Faithful Markdown, then `render_markdown` from `tests/common/mod.rs`. Parse the **input** HTML and that round-trip HTML as fragments with `html5ever`, using `<div>` as the context element for both. **Yes** if those DOM fragments are not equivalent (same elements and text; parser-inserted document wrappers, attribute order, and implied `<tbody>` may differ). Do not strcmp the `round_trip` source string, and do not demand byte-identical Markdown. |
+| 3 | Stream 1, and the input equals (or normalizes to) an HTML cell in a specification table with Expected output, or appears in `tests/translation_approach_tests.rs` | **Yes** if Markdown ≠ Faithful expected (or the Pure column when the run set `TranslationMode::Pure`). Generator-table rows alone do not trigger priority 3 unless the same payload also appears in such a specification table. |
+| 4 | Stream 1, not covered by priority 3 | Write Faithful Markdown, then `render_markdown` from `tests/common/mod.rs`. Parse the **input** HTML and that round-trip HTML as fragments with `html5ever`, using `<div>` as the context element for both. **Yes** if those DOM fragments are not equivalent: same local tag names in the same child order, same text in text nodes (no trimming or newline collapse), same attribute local names and values on each element; ignore parser-inserted document wrappers, attribute order among siblings, and implied `<tbody>`. Do not strcmp the `round_trip` source string, and do not demand byte-identical Markdown. |
 | 5 | Stream 2 (broken HTML) | Only priorities 1–2. There is no unique “correct Markdown” for garbage. |
 
 Do not flag a difference from turndown.js unless the case already lives in
