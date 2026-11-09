@@ -868,31 +868,102 @@ comment, so only a comment in text mode renders differently (see step 1).
 
 ### Fuzzer
 
-Because inputs are prone to bugs being present, htmd also requires an
-adequate fuzzer to ensure the validity of inputs (i.e. html formatted text.) In
-order to do this, the fuzzer must evaluate a large quantity of valid inputs, compare
-their outputs against actual valid html-Markdown conversions, and discern the input 
-against the output to evaluate for invalidities and bugs. 
+htmd is fed HTML that authors and browsers do not always keep well-formed.
+A fuzzer searches for inputs that make translation panic, hang, or disagree
+with this document. It is not a syntax checker for the caller's HTML:
+`html5ever` already parses garbage into a DOM. The fuzzer checks *htmd*.
 
-The two main components of the fuzzer are the oracle and the generator. The generator
-is responsible for creating valid html inputs in a large quantity, at least 10,000 in
-total, to be evaluated. The output of htmd based on the inputs is then subsequently
-evaluated by the oracle. The oracle compares the outputs against the correct output,
-which then judges the accuracy of the outputs and flags innacuracies of the translation
-to capture faults in the translation process.
+The two components are the **generator** (inputs) and the **oracle** (what
+counts as a bug). One run uses a single crate API: `htmd::convert(&str)` or
+`HtmlToMarkdown::builder().options(opts).build().convert(&str)`. Do not go
+through the CLI, the network, or a subprocess other than the test binary.
+Default options unless a case names `TranslationMode::Faithful` or
+`TranslationMode::Pure`. Seed the corpus from `tests/*.rs` and from the
+HTML-in / Faithful-expected tables in this file.
 
-In order to create the inputs, the generator must capable of randomly generating a
-large quantity of valid html snippets encompassing a variety of different html 
-expressions. Subsequently, the generator must also be capable of ensuring that
-its own generated outputs adhere to html syntax by scrutinizing and 
-verifying its outputs against html syntax rules. This is to ensure that the valid
-html segments generated are indeed valid.
+#### Generator
 
-The oracle must also be able to scrutinize the output of htmd based on the html
-segments. This is crucial to fuzzer's ability to flag innaccuracies in the htmd
-output compared to the actual, expected Markdown conversions.
+Two streams. Both are UTF-8 strings passed to `convert`. Cap each input at
+64 KiB. Produce at least 10,000 cases per run, mixing the streams; a shorter
+CI job may cap time instead of count (five minutes, then stop).
 
-Html errors can come in a wide variety of forms. Below are examples of common
-errors in html that the fuzzer must be able to evaluate.
+1. **Structured HTML.** Build a small DOM as nested tags drawn from the
+   elements this document specifies (`h1`–`h6`, `p`, `br`, `hr`, `em`,
+   `strong`, `a`, `img`, `code`, `pre`, `blockquote`, `ul`/`ol`/`li`,
+   `table`/`thead`/`tbody`/`tr`/`th`/`td`, `span` with math classes, raw
+   HTML). Fill text nodes from a pool of ASCII, combining marks, `$`, `|`,
+   `*`, `_`, `` ` ``, `<`, `&`, and newlines. Nest at most 8 levels. This
+   stream is the one that may be checked for “valid HTML”: every open tag
+   that this generator emits is closed, attributes are quoted, and the
+   snippet is a fragment (no required `<html>`/`<body>` wrapper). Validity
+   here means *the generator's own grammar*, not “the browser would accept
+   it.”
+
+2. **Broken and random.** Mutate stream 1 and also emit raw bytes
+   interpreted as UTF-8 (replacement character on invalid sequences):
+   truncated tags, extra `</div>`, unquoted attributes, nested `<a>`,
+   `<table>` inside `<p>`, NUL (`\0`), empty input, very deep nesting
+   (then reject above 8 for structured; broken stream may go to 32 and
+   must still not stack-overflow), and the HTML error list below.
+
+Mutations on a seed: delete a slice, insert a tag or character from the
+pool, duplicate a subtree, swap two siblings, replace a named character
+reference with its raw character or the reverse.
+
+#### Oracle
+
+Call `convert` in a thread or subprocess with a 2-second timeout per input.
+Classify the result in this order; the first match is the finding:
+
+| Priority | Result | Finding? |
+| --- | --- | --- |
+| 1 | Process abort, panic, or timeout | **Yes.** Save the input. |
+| 2 | `convert` returns `Err` | **Yes**, unless this document names that input as unrepresentable and the error is `std::io::Error` from the public API. Today `convert` is documented to return `Result`; a panic inside parsing or walking is still priority 1. |
+| 3 | Stream 1, and the case is a row in this document's tables (or `tests/translation_approach_tests.rs`) | **Yes** if Markdown ≠ Faithful expected (or the Pure column when the run set `TranslationMode::Pure`). |
+| 4 | Stream 1, not a table row | Round-trip with the helpers in `tests/common/mod.rs`: Faithful Markdown piped through `pulldown-cmark`. **Yes** if the round-trip HTML, parsed as a DOM, is not equivalent to the input DOM under the rules of this document (same elements and text after `html5ever` parse; attribute order and implied `<tbody>` may differ). Do not demand byte-identical Markdown. |
+| 5 | Stream 2 (broken HTML) | Only priorities 1–2. There is no unique “correct Markdown” for garbage. |
+
+Do not flag a difference from turndown.js unless the case already lives in
+`tests/turndown_cases_tests.rs`. htmd's Faithful mode is specified here, not
+by turndown.
+
+#### HTML the broken stream must include
+
+Quoted cells are the generator payload, not a Markdown example.
+
+| Kind | Example payload | Oracle |
+| --- | --- | --- |
+| Empty | `""` | Must return `Ok`, not panic |
+| Whitespace only | `"   \n\t"` | Must return `Ok` |
+| Unclosed tag | `"<p>hello"` | Priority 1–2 only |
+| Extra closer | `"hello</p>"` | Priority 1–2 only |
+| Nested anchors | `"<a href=a><a href=b>x</a></a>"` | Priority 1–2 only |
+| Unquoted attr | `"<a href=http://x y>z</a>"` | Priority 1–2 only |
+| NUL | `"<p>a\0b</p>"` | Priority 1–2 only |
+| Comment / CDATA | `"<!-- <h1> -->"`, `"<![CDATA[ a ]]>"` | Priority 1–2; if treated as a table row in this file, use that expected output |
+| Raw `<` in text | `"<p>3 < 4</p>"` | Stream 1 if wrapped in a complete `p`; else 1–2 |
+| Ampersand | `"<p>a&b</p>"`, `"<p>&amp;</p>"` | Stream 1 for `&amp;`; broken for lone `&` |
+| Table fragment | `"<td>x</td>"` | Priority 1–2 only |
+| Math span | `"<span class=\"math math-inline\">$</span>"` | Stream 1; expected follows the Math section |
+| Huge attribute | `"<p id=\""` + 10,000 `a`s + `"\">x</p>"` | Truncate to 64 KiB; still no panic |
+
+#### Run
+
+From the crate root of this git repo (Rust stable, same as CI):
+
+```
+cargo test
+cargo build
+```
+
+The fuzzer itself is a later binary or `cargo test` target; this section is
+the spec for that target. `cargo test` must keep passing. A fuzzer finding
+is a failing test case added next to the existing tables, not a log line
+that is ignored.
+
+Non-goals: mutating Markdown (htmd reads HTML); fuzzing `html5ever` in
+isolation; a second HTML parser as a “validator” of stream 2; claiming
+complexity bounds; language detection; I/O other than the `convert`
+`Result`.
 
 
