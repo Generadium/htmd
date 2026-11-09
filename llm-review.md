@@ -116,3 +116,19 @@ Numbered findings; only issues where two implementers of this section would dive
 ~~3. Mandate libFuzzer now.~~ The Run section still defers the binary.
 
 Both findings applied.
+
+## Final review (Round 7)
+
+Model: GPT-5.5. Prompt: `Review the section named "Fuzzer" in translation_approach.md`. Strikethrough indicates LLM output deemed incorrect or irrelevant.
+
+Numbered findings; only issues where two implementers of this section would diverge.
+
+*(None after rounds 1–6.)*
+
+**Review text.** Generator (two streams, mutations, generator table), oracle (stream class at check time, priorities 1–5), and Run (`cargo test` / `cargo build`, `#[ignore]` findings) read as one strategy. Stream 1 vs 2, Faithful default vs Pure for spec-table rows, fragment parsing under `<div>`, and specification-table seeds are aligned across the section. I did not find a place where two implementers would still pick different APIs, oracles, or run commands.
+
+~~1. Add a second HTML parser to validate stream 2.~~ Listed non-goal.
+
+~~2. Remove the 64 KiB cap as unrealistic.~~ The cap is explicit and the huge-attribute row exercises it.
+
+~~3. Require every contributor to use the same LLM for all rounds.~~ Each round records model and prompt; mixed models are fine.
