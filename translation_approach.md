@@ -874,12 +874,23 @@ with this document. It is not a syntax checker for the caller's HTML:
 `html5ever` already parses garbage into a DOM. The fuzzer checks *htmd*.
 
 The two components are the **generator** (inputs) and the **oracle** (what
-counts as a bug). One run uses a single crate API: `htmd::convert(&str)` or
-`HtmlToMarkdown::builder().options(opts).build().convert(&str)`. Do not go
-through the CLI, the network, or a subprocess other than the test binary.
-Default options unless a case names `TranslationMode::Faithful` or
-`TranslationMode::Pure`. Seed the corpus from `tests/*.rs` and from the
-HTML-in / Faithful-expected tables in this file.
+counts as a bug). One run uses a single crate API. The default run is
+`TranslationMode::Faithful`, matching this document and `tests/common/mod.rs`:
+
+    HtmlToMarkdown::builder()
+        .options(Options {
+            translation_mode: TranslationMode::Faithful,
+            ..Options::default()
+        })
+        .build()
+        .convert(&str)
+
+`htmd::convert(&str)` uses `Options::default()`, whose mode is
+`TranslationMode::Pure`; use it only when a case names Pure. Do not go
+through the CLI or the network. The 2-second timeout may use a thread or a
+child of the test binary, not the `htmd` CLI. Seed the corpus from HTML
+string literals in `tests/*.rs` and from the HTML-in / Faithful-expected
+tables in this file.
 
 #### Generator
 
@@ -890,12 +901,14 @@ CI job may cap time instead of count (five minutes, then stop).
 1. **Structured HTML.** Build a small DOM as nested tags drawn from the
    elements this document specifies (`h1`–`h6`, `p`, `br`, `hr`, `em`,
    `strong`, `a`, `img`, `code`, `pre`, `blockquote`, `ul`/`ol`/`li`,
-   `table`/`thead`/`tbody`/`tr`/`th`/`td`, `span` with math classes, raw
-   HTML). Fill text nodes from a pool of ASCII, combining marks, `$`, `|`,
-   `*`, `_`, `` ` ``, `<`, `&`, and newlines. Nest at most 8 levels. This
-   stream is the one that may be checked for “valid HTML”: every open tag
-   that this generator emits is closed, attributes are quoted, and the
-   snippet is a fragment (no required `<html>`/`<body>` wrapper). Validity
+   `table`/`thead`/`tbody`/`tr`/`th`/`td`, `span` with math classes, and
+   elements this document writes as raw HTML). Fill text nodes from a pool
+   of ASCII, combining marks, `$`, `|`, `*`, `_`, `` ` ``, `<`, `&`, and
+   newlines. Nest at most 8 levels. Do not nest `<a>` in `<a>`; nested
+   anchors belong to stream 2. This stream is the one that may be checked
+   for “valid HTML”: every open tag that this generator emits is closed,
+   attributes are quoted, and the snippet is a fragment (no required
+   `<html>`/`<body>` wrapper). Validity
    here means *the generator's own grammar*, not “the browser would accept
    it.”
 
@@ -904,7 +917,7 @@ CI job may cap time instead of count (five minutes, then stop).
    truncated tags, extra `</div>`, unquoted attributes, nested `<a>`,
    `<table>` inside `<p>`, NUL (`\0`), empty input, very deep nesting
    (then reject above 8 for structured; broken stream may go to 32 and
-   must still not stack-overflow), and the HTML error list below.
+   must still not stack-overflow), and the generator table below.
 
 Mutations on a seed: delete a slice, insert a tag or character from the
 pool, duplicate a subtree, swap two siblings, replace a named character
@@ -912,24 +925,27 @@ reference with its raw character or the reverse.
 
 #### Oracle
 
-Call `convert` in a thread or subprocess with a 2-second timeout per input.
-Classify the result in this order; the first match is the finding:
+Call `convert` in a thread or a child of the test binary with a 2-second
+timeout per input. Classify the result in this order; the first match is
+the finding:
 
 | Priority | Result | Finding? |
 | --- | --- | --- |
 | 1 | Process abort, panic, or timeout | **Yes.** Save the input. |
-| 2 | `convert` returns `Err` | **Yes**, unless this document names that input as unrepresentable and the error is `std::io::Error` from the public API. Today `convert` is documented to return `Result`; a panic inside parsing or walking is still priority 1. |
+| 2 | `convert` returns `Err` | **Yes.** `html_to_tree` currently always returns `Ok`, so `convert` does not return `Err`. This document names no input as an expected `io::Error`. A panic inside parsing or walking is still priority 1. |
 | 3 | Stream 1, and the case is a row in this document's tables (or `tests/translation_approach_tests.rs`) | **Yes** if Markdown ≠ Faithful expected (or the Pure column when the run set `TranslationMode::Pure`). |
-| 4 | Stream 1, not a table row | Round-trip with the helpers in `tests/common/mod.rs`: Faithful Markdown piped through `pulldown-cmark`. **Yes** if the round-trip HTML, parsed as a DOM, is not equivalent to the input DOM under the rules of this document (same elements and text after `html5ever` parse; attribute order and implied `<tbody>` may differ). Do not demand byte-identical Markdown. |
+| 4 | Stream 1, not a table row | Write Faithful Markdown, then `render_markdown` from `tests/common/mod.rs`. Parse the **input** HTML and that round-trip HTML with `html5ever`. **Yes** if those DOMs are not equivalent (same elements and text; attribute order and implied `<tbody>` may differ). Do not strcmp the `round_trip` source string, and do not demand byte-identical Markdown. |
 | 5 | Stream 2 (broken HTML) | Only priorities 1–2. There is no unique “correct Markdown” for garbage. |
 
 Do not flag a difference from turndown.js unless the case already lives in
 `tests/turndown_cases_tests.rs`. htmd's Faithful mode is specified here, not
 by turndown.
 
-#### HTML the broken stream must include
+#### HTML the generator must include
 
-Quoted cells are the generator payload, not a Markdown example.
+Quoted cells are the generator payload, not a Markdown example. If a payload
+appears in this table, this row's Oracle column wins over stream 1 vs 2
+classification.
 
 | Kind | Example payload | Oracle |
 | --- | --- | --- |
