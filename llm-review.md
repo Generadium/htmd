@@ -1,6 +1,6 @@
 # LLM review — Fuzzer section
 
-Prompting Grok 4.6 with `Review the section named "Fuzzer" in translation_approach.md` produced the following output; strikethrough indicates LLM output that I deemed incorrect or irrelevant.
+Each round prompted an LLM with `Review the section named "Fuzzer" in translation_approach.md`; strikethrough indicates LLM output that I deemed incorrect or irrelevant. Round 1 used Grok 4.6; Round 2 used GPT-5.5.
 
 The LLM must not edit the spec in the same step as the review. Spec fixes from applied findings are in `translation_approach.md` (`### Fuzzer`).
 
@@ -9,6 +9,7 @@ The LLM must not edit the spec in the same step as the review. Spec fixes from a
 | Round | Findings | Main changes made |
 | ----- | -------- | ----------------- |
 | 1     | 8        | Default run is Faithful (`builder` + `Options`), not `htmd::convert` / Pure; timeout is a thread or child of the test binary, not the CLI; seed HTML literals from `tests/*.rs`, not the Rust source; structured stream must not nest `<a>` in `<a>`; corpus table Oracle column wins over stream class; priority 2 records that `convert` currently never returns `Err`; priority 4 compares html5ever DOMs, does not strcmp `round_trip` source; stream 2 points at the generator table, not an “HTML error list” |
+| 2     | 4        | Structured text nodes are serialized with HTML escaping; priority 4 compares parsed fragments under one context and ignores parser-inserted wrappers; empty and whitespace payloads explicitly treat `Err` as a finding; Comment / CDATA row points to this document's specification tables, not the generator table itself |
 
 Compile/run (`cargo build` / `cargo test` and the prompt *Verify that you can compile and run the project in the current git repo.*) is a later step, after further rounds.
 
@@ -39,3 +40,19 @@ Numbered findings; only issues where two implementers of this section would dive
 ~~11. Rewrite the whole Fuzzer section to match libFuzzer / cargo-fuzz layout, or add `cargo fuzz` / a `[[bin]]` target now.~~ The assignment is a strategy in this document. The Run section says the fuzzer is a later binary.
 
 No remaining listed payload has two oracles once the table’s Oracle column wins.
+
+## Round 2
+
+Model: GPT-5.5. Prompt: `Review the section named "Fuzzer" in translation_approach.md`.
+
+Numbered findings; only issues where two implementers of this section would diverge.
+
+1. Structured text containing `<` and `&`. Stream 1 says text nodes come from a pool including `<` and `&`, and also says every open tag is closed and the stream may be checked as valid HTML. One implementer escapes text nodes as `&lt;` / `&amp;`; another writes raw `<` / `&` and creates broken HTML inside stream 1.
+
+2. Priority 4 DOM comparison context. The section says parse the input HTML and round-trip HTML with `html5ever`, but the fuzzer input is a fragment. One implementer compares full parser documents with inserted `<html>` / `<body>` wrappers; another compares fragment children under a fixed context. Wrapper insertion can become the finding instead of an htmd mismatch.
+
+3. Empty and whitespace-only rows. The table says “Must return `Ok`, not panic,” while the oracle already says any `Err` is a priority 2 finding. One implementer records `Err` for these rows as a finding; another reads the row as only forbidding panic.
+
+4. Comment / CDATA expected-output escape hatch. The row says “if treated as a table row in this file,” but the row itself is in the generator table. One implementer applies only priorities 1–2 to the listed payloads; another looks for expected Markdown in this document's specification tables.
+
+~~5. Require a fixed random seed and publish the seed value in the spec.~~ Reproducibility is useful for an implementation, but this strategy document only needs saved failing inputs; the Run section already says a finding becomes a failing test case.

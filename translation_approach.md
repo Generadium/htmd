@@ -904,7 +904,9 @@ CI job may cap time instead of count (five minutes, then stop).
    `table`/`thead`/`tbody`/`tr`/`th`/`td`, `span` with math classes, and
    elements this document writes as raw HTML). Fill text nodes from a pool
    of ASCII, combining marks, `$`, `|`, `*`, `_`, `` ` ``, `<`, `&`, and
-   newlines. Nest at most 8 levels. Do not nest `<a>` in `<a>`; nested
+   newlines. Serialize text nodes with HTML escaping (`<` as `&lt;`, `&` as
+   `&amp;`) except when the case intentionally emits a named character
+   reference from the table below. Nest at most 8 levels. Do not nest `<a>` in `<a>`; nested
    anchors belong to stream 2. This stream is the one that may be checked
    for “valid HTML”: every open tag that this generator emits is closed,
    attributes are quoted, and the snippet is a fragment (no required
@@ -934,7 +936,7 @@ the finding:
 | 1 | Process abort, panic, or timeout | **Yes.** Save the input. |
 | 2 | `convert` returns `Err` | **Yes.** `html_to_tree` currently always returns `Ok`, so `convert` does not return `Err`. This document names no input as an expected `io::Error`. A panic inside parsing or walking is still priority 1. |
 | 3 | Stream 1, and the case is a row in this document's tables (or `tests/translation_approach_tests.rs`) | **Yes** if Markdown ≠ Faithful expected (or the Pure column when the run set `TranslationMode::Pure`). |
-| 4 | Stream 1, not a table row | Write Faithful Markdown, then `render_markdown` from `tests/common/mod.rs`. Parse the **input** HTML and that round-trip HTML with `html5ever`. **Yes** if those DOMs are not equivalent (same elements and text; attribute order and implied `<tbody>` may differ). Do not strcmp the `round_trip` source string, and do not demand byte-identical Markdown. |
+| 4 | Stream 1, not a table row | Write Faithful Markdown, then `render_markdown` from `tests/common/mod.rs`. Parse the **input** HTML and that round-trip HTML as fragments under the same context with `html5ever`. **Yes** if those DOM fragments are not equivalent (same elements and text; parser-inserted document wrappers, attribute order, and implied `<tbody>` may differ). Do not strcmp the `round_trip` source string, and do not demand byte-identical Markdown. |
 | 5 | Stream 2 (broken HTML) | Only priorities 1–2. There is no unique “correct Markdown” for garbage. |
 
 Do not flag a difference from turndown.js unless the case already lives in
@@ -949,14 +951,14 @@ classification.
 
 | Kind | Example payload | Oracle |
 | --- | --- | --- |
-| Empty | `""` | Must return `Ok`, not panic |
-| Whitespace only | `"   \n\t"` | Must return `Ok` |
+| Empty | `""` | Must return `Ok`; panic, timeout, abort, or `Err` is a finding |
+| Whitespace only | `"   \n\t"` | Must return `Ok`; panic, timeout, abort, or `Err` is a finding |
 | Unclosed tag | `"<p>hello"` | Priority 1–2 only |
 | Extra closer | `"hello</p>"` | Priority 1–2 only |
 | Nested anchors | `"<a href=a><a href=b>x</a></a>"` | Priority 1–2 only |
 | Unquoted attr | `"<a href=http://x y>z</a>"` | Priority 1–2 only |
 | NUL | `"<p>a\0b</p>"` | Priority 1–2 only |
-| Comment / CDATA | `"<!-- <h1> -->"`, `"<![CDATA[ a ]]>"` | Priority 1–2; if treated as a table row in this file, use that expected output |
+| Comment / CDATA | `"<!-- <h1> -->"`, `"<![CDATA[ a ]]>"` | Priority 1–2; if the payload also appears in this document's specification tables, use that expected output |
 | Raw `<` in text | `"<p>3 < 4</p>"` | Stream 1 if wrapped in a complete `p`; else 1–2 |
 | Ampersand | `"<p>a&b</p>"`, `"<p>&amp;</p>"` | Stream 1 for `&amp;`; broken for lone `&` |
 | Table fragment | `"<td>x</td>"` | Priority 1–2 only |
