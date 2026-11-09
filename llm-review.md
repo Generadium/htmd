@@ -1,6 +1,6 @@
 # LLM review — Fuzzer section
 
-Each round prompted an LLM with `Review the section named "Fuzzer" in translation_approach.md`; strikethrough indicates LLM output that I deemed incorrect or irrelevant. Round 1 used Grok 4.6; Round 2 used GPT-5.5.
+Each round prompted an LLM with `Review the section named "Fuzzer" in translation_approach.md`; strikethrough indicates LLM output that I deemed incorrect or irrelevant. Round 1 used Grok 4.6; Round 2 used GPT-5.5; Round 3 used Claude Sonnet 4.6; Round 4 used Grok 4.6.
 
 The LLM must not edit the spec in the same step as the review. Spec fixes from applied findings are in `translation_approach.md` (`### Fuzzer`).
 
@@ -12,6 +12,7 @@ The LLM must not edit the spec in the same step as the review. Spec fixes from a
 | 1 (used Grok 4.6)          | 8        | Default run is Faithful (`builder` + `Options`), not `htmd::convert` / Pure; timeout is a thread or child of the test binary, not the CLI; seed HTML literals from `tests/*.rs`, not the Rust source; structured stream must not nest `<a>` in `<a>`; corpus table Oracle column wins over stream class; priority 2 records that `convert` currently never returns `Err`; priority 4 compares html5ever DOMs, does not strcmp `round_trip` source; stream 2 points at the generator table, not an “HTML error list” |
 | 2 (used GPT-5.5)           | 4        | Structured text nodes are serialized with HTML escaping; priority 4 compares parsed fragments under one context and ignores parser-inserted wrappers; empty and whitespace payloads explicitly treat `Err` as a finding; Comment / CDATA row points to this document's specification tables, not the generator table itself                                                                                                                                                                                         |
 | 3 (used Claude Sonnet 4.6) | 4        | Mutations are string-level (not DOM-level); fragment context element named as `<div>`; finding storage changed to `#[ignore]` test (reconciles "keep passing" with "failing test case"); `&` double-escaping exception reworded to remove ambiguous "from the table below" phrase                                                                                                                                                                                                                                   |
+| 4 (used Grok 4.6)          | 4        | Stream 1 generator-table payloads stay verbatim (raw `<` in `"<p>3 < 4</p>"`); stream 1 root must parse under `<div>` (no bare `td`/`tr`/`th`/`li`); tag-delimited substring defined, skip duplicate/swap on unmatched tags; Pure run only for spec-table rows with a Pure expected column |
 
 
 Compile/run (`cargo build` / `cargo test` and the prompt *Verify that you can compile and run the project in the current git repo.*) is a later step, after further rounds.
@@ -64,5 +65,22 @@ Numbered findings; only issues where two implementers of this section would dive
 ~~5. Remove the~~ `Huge attribute` ~~row: the generator already caps at 64 KiB, making the row redundant.~~ The row makes the cap concrete with a specific shape of input (long attribute vs long text body). Removing it leaves that shape untested.
 
 ~~6. Add~~ `cargo fuzz` ~~/~~ `cargo-fuzz` ~~as the required runner in the Run section.~~ The section already says the fuzzer is "a later binary or `cargo test` target." Naming a framework now over-specifies the implementation.
+
+All four findings applied.
+
+## Round 4
+
+Model: Grok 4.6. Prompt: `Review the section named "Fuzzer" in translation_approach.md`. Strikethrough indicates LLM output deemed incorrect or irrelevant.
+
+Numbered findings; only issues where two implementers of this section would diverge.
+
+1. Structured escaping vs generator-table Stream 1. Stream 1 serializes text with `<` → `&lt;`, but the table lists `"<p>3 < 4</p>"` as Stream 1. One implementer never emits raw `<` in stream 1; another emits the table payload verbatim. The table's Oracle column is supposed to win, but the escaping rule did not say so.
+2. Stream 1 root vs `<div>` fragment context. Priority 4 parses both sides under `<div>`. Stream 1 may still emit a bare `td`/`tr`/`li` as the fragment root (those tags are in the element list). html5ever under `<div>` does not keep a `td` as `td`. One implementer uses those roots and flags wrapper/identity changes; another never emits them in stream 1 (the generator table already puts `"<td>x</td>"` in priorities 1–2).
+3. “Tag-delimited substring” was undefined. Round 3 locked mutations to strings (`duplicate a tag-delimited substring`, `swap two adjacent tag-delimited sibling substrings`) without saying what the delimiter is. One implementer splits on every `<…>`; another requires a matching closer. Unmatched stream 2 seeds then diverge.
+4. When Pure runs. The intro still said use Pure “when a case names Pure,” but the generator table has no mode column. Specification tables elsewhere do have a Pure expected column. One implementer never runs Pure; another runs Pure on every case.
+
+~~5. Require a 50/50 mix of stream 1 and stream 2.~~ Mixing is already required. A ratio is extra.
+
+~~6. Add `cargo fuzz` or a `[[bin]]` now.~~ The Run section still says the fuzzer is a later binary or `cargo test` target.
 
 All four findings applied.

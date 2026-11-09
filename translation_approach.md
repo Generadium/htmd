@@ -886,11 +886,12 @@ counts as a bug). One run uses a single crate API. The default run is
         .convert(&str)
 
 `htmd::convert(&str)` uses `Options::default()`, whose mode is
-`TranslationMode::Pure`; use it only when a case names Pure. Do not go
-through the CLI or the network. The 2-second timeout may use a thread or a
-child of the test binary, not the `htmd` CLI. Seed the corpus from HTML
-string literals in `tests/*.rs` and from the HTML-in / Faithful-expected
-tables in this file.
+`TranslationMode::Pure`. The default fuzzer run is Faithful only. Start a
+Pure run only to check a specification-table row (not the generator table)
+that has a Pure expected column. Do not go through the CLI or the network.
+The 2-second timeout may use a thread or a child of the test binary, not
+the `htmd` CLI. Seed the corpus from HTML string literals in `tests/*.rs`
+and from the HTML-in / Faithful-expected tables in this file.
 
 #### Generator
 
@@ -904,15 +905,20 @@ CI job may cap time instead of count (five minutes, then stop).
    `table`/`thead`/`tbody`/`tr`/`th`/`td`, `span` with math classes, and
    elements this document writes as raw HTML). Fill text nodes from a pool
    of ASCII, combining marks, `$`, `|`, `*`, `_`, `` ` ``, `<`, `&`, and
-   newlines.    Serialize text-node content with HTML escaping (`<` as `&lt;`, `&` as
-   `&amp;`). The Ampersand row in the generator table intentionally contains
-   `&amp;`; do not double-escape it to `&amp;amp;`. Nest at most 8 levels. Do not nest `<a>` in `<a>`; nested
-   anchors belong to stream 2. This stream is the one that may be checked
-   for “valid HTML”: every open tag that this generator emits is closed,
+   newlines. Serialize text-node content with HTML escaping (`<` as `&lt;`,
+   `&` as `&amp;`). The Ampersand row's `"<p>&amp;</p>"` payload is already
+   escaped; do not double-escape it to `&amp;amp;`. Generator-table payloads
+   whose Oracle column names Stream 1 are emitted verbatim, including
+   `"<p>3 < 4</p>"` (raw `<` in text). Nest at most 8 levels. Do not nest
+   `<a>` in `<a>`; nested anchors belong to stream 2. The fragment's root is
+   an element that html5ever parses under `<div>` without changing that
+   element's identity (`p`, `table`, `ul`, `pre`, …). Do not emit a bare
+   `td`/`tr`/`th`/`li` as the stream 1 root; those belong to stream 2, as in
+   the generator table. This stream is the one that may be checked for
+   “valid HTML”: every open tag that this generator emits is closed,
    attributes are quoted, and the snippet is a fragment (no required
-   `<html>`/`<body>` wrapper). Validity
-   here means *the generator's own grammar*, not “the browser would accept
-   it.”
+   `<html>`/`<body>` wrapper). Validity here means *the generator's own
+   grammar*, not “the browser would accept it.”
 
 2. **Broken and random.** Mutate stream 1 and also emit raw bytes
    interpreted as UTF-8 (replacement character on invalid sequences):
@@ -921,11 +927,14 @@ CI job may cap time instead of count (five minutes, then stop).
    (then reject above 8 for structured; broken stream may go to 32 and
    must still not stack-overflow), and the generator table below.
 
-Mutations operate on the string, not on a parsed DOM. Operations on a seed:
-delete a byte slice, insert a tag or character from the pool, duplicate a
-tag-delimited substring, swap two adjacent tag-delimited sibling
-substrings, replace a named character reference with its raw character or
-the reverse.
+Mutations operate on the string, not on a parsed DOM. A tag-delimited
+substring is an opening tag through its matching closer in the seed
+string. Operations on a seed: delete a byte slice, insert a tag or
+character from the pool, duplicate a tag-delimited substring, swap two
+adjacent tag-delimited sibling substrings, replace a named character
+reference with its raw character or the reverse. If the seed has no
+matching closer, skip duplicate and sibling-swap; still apply delete,
+insert, and named-reference replace.
 
 #### Oracle
 
