@@ -17,7 +17,7 @@ The LLM must not edit the spec in the same step as the review. Spec fixes from a
 | 6 (used Claude Sonnet 4.6) | 2        | Void/self-closing tags in tag-delimited mutations; CI time cap is wall-clock for the whole fuzz job |
 
 
-Compile/run (`cargo build` / `cargo test` and the prompt *Verify that you can compile and run the project in the current git repo.*) is a later step, after further LLM rounds.
+Compile/run evidence per team member is in [`submission.md`](submission.md) (Project 2 draft).
 
 ## Round 1
 
