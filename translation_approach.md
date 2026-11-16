@@ -870,8 +870,7 @@ comment, so only a comment in text mode renders differently (see step 1).
 
 htmd is fed HTML that authors and browsers do not always keep well-formed.
 A fuzzer searches for inputs that make translation panic, hang, or disagree
-with this document. It is not a syntax checker for the caller's HTML:
-`html5ever` already parses garbage into a DOM. The fuzzer checks *htmd*.
+with this document. 
 
 The two components are the **generator** (inputs) and the **oracle** (what
 counts as a bug). One run uses a single crate API. The default run is
@@ -885,12 +884,11 @@ counts as a bug). One run uses a single crate API. The default run is
         .build()
         .convert(&str)
 
-`htmd::convert(&str)` uses `Options::default()`, whose mode is
-`TranslationMode::Pure`. The default fuzzer run is Faithful only. Start a
-Pure run only to check a specification-table row (not the generator table)
-that has a Pure expected column. Do not go through the CLI or the network.
-The 2-second timeout may use a thread or a child of the test binary, not
-the `htmd` CLI. Seed the corpus from HTML string literals in `tests/*.rs`
+`htmd::convert(&str)` uses `Options::default()`. The default fuzzer run is Faithful only.
+ Do not go through the CLI or the network.
+Convert each input in a child process of the test binary. 
+The parent enforces a 2-second deadline, terminates and waits for a timed-out child, records the failing input,
+and continues with subsequent inputs. Seed the corpus from HTML string literals in `tests/*.rs`
 and from this document's **specification tables**: feature sections whose
 tables pair an HTML (or Input) column with an Expected column for
 Faithful mode. Do not seed from the generator table in this section or
@@ -904,65 +902,81 @@ CI job may cap **wall-clock time** for the whole fuzz run instead of count
 (five minutes total, then stop). The per-input oracle timeout remains 2
 seconds.
 
-1. **Structured HTML.** Build a small DOM as nested tags drawn from the
-   elements this document specifies (`h1`–`h6`, `p`, `br`, `hr`, `em`,
-   `strong`, `a`, `img`, `code`, `pre`, `blockquote`, `ul`/`ol`/`li`,
-   `table`/`thead`/`tbody`/`tr`/`th`/`td`, `span` with math classes, and
-   elements this document writes as raw HTML). Fill text nodes from a pool
-   of ASCII, combining marks, `$`, `|`, `*`, `_`, `` ` ``, `<`, `&`, and
-   newlines. Serialize text-node content with HTML escaping (`<` as `&lt;`,
-   `&` as `&amp;`). The Ampersand row's `"<p>&amp;</p>"` payload is already
-   escaped; do not double-escape it to `&amp;amp;`. Generator-table payloads
-   whose Oracle column names Stream 1 are emitted verbatim, including
-   `"<p>3 < 4</p>"` (raw `<` in text). Nest at most 8 levels. Do not nest
-   `<a>` in `<a>`; nested anchors belong to stream 2. The fragment's root is
-   an element that html5ever parses under `<div>` without changing that
-   element's identity (`p`, `table`, `ul`, `pre`, …). Do not emit a bare
-   `td`/`tr`/`th`/`li` as the stream 1 root; those belong to stream 2, as in
-   the generator table. This stream is the one that may be checked for
-   “valid HTML”: every open tag that this generator emits is closed,
-   attributes are quoted, and the snippet is a fragment (no required
-   `<html>`/`<body>` wrapper). Validity here means *the generator's own
-   grammar*, not “the browser would accept it.”
+1. **Structured HTML.** Construct a small DOM using elements specified in this document (`h1`–`h6`, `p`, `br`, `hr`, `em`, `strong`, `a`, `img`, `code`, `pre`, `blockquote`, `ul`/`ol`/`li`, `table`/`thead`/`tbody`/`tr`/`th`/`td`, `input`, math `span`, and raw HTML elements). Follow permitted HTML nesting rules, including matching closing tags for all non-void elements. Void elements (`br`, `hr`, `img`, `input`, etc.) have no closing tags. Limit nesting to 8 levels; exclude invalid combinations such as `<p><div>...</div></p>` and nested anchors.
 
-2. **Broken and random.** Mutate stream 1 and also emit raw bytes
-   interpreted as UTF-8 (replacement character on invalid sequences):
-   truncated tags, extra `</div>`, unquoted attributes, nested `<a>`,
-   `<table>` inside `<p>`, NUL (`\0`), empty input, very deep nesting
-   (then reject above 8 for structured; broken stream may go to 32 and
-   must still not stack-overflow), and the generator table below.
+   Generate appropriate attributes, including `href`/`title` for links, `src`/`alt` for images, `start` for ordered lists, `type`/`checked` for checkboxes, and `class` for math spans. Vary attribute presence and values, quoting and escaping values appropriately.
 
-Mutations operate on the string, not on a parsed DOM. A tag-delimited
-substring is an opening tag through its matching closer in the seed
-string. Void elements (`br`, `hr`, `img`) count as opening tag through
-end of tag with no closer. Operations on a seed: delete a byte slice, insert a tag or
-character from the pool, duplicate a tag-delimited substring, swap two
-adjacent tag-delimited sibling substrings, replace a named character
-reference with its raw character or the reverse. If the seed has no
-matching closer, skip duplicate and sibling-swap; still apply delete,
-insert, and named-reference replace.
+   Populate text nodes with ASCII, Unicode combining marks, newlines, special characters (`$`, `|`, `*`, `_`, `` ` ``, `<`, `&`), and Markdown-like strings (`1. Foo`, `* Foo`, `---`, `# hello`, `[link](fake)`). Place these strings at different positions, including line beginnings, to test Markdown escaping. Escape HTML text content (`<` as `&lt;`, `&` as `&amp;`).
+
+  Emit specification-table and generator-table seeds verbatim where required, without double-escaping existing entities or changing intentional raw
+  characters. The root must retain its identity when parsed by `html5ever` under `<div>`; bare `td`, `tr`, `th`, and `li` roots belong to Stream 2.
+  Stream 1 produces properly nested HTML fragments, without requiring `<html>` or `<body>` wrappers. Stream 1 inputs containing text or phrasing
+  content directly at the fragment root receive only Priorities 1–2. Generate additional paragraph-wrapped variants of these inputs for round-trip
+  comparison. Preserve corpus seeds verbatim; wrapped variants are separate inputs.
+
+
+2. **Arbitrary, broken, and random HTML.** Independently generate arbitrary HTML using standard and custom elements, attributes, text, comments, and character references, without restricting tags to those in this specification. Include fragments and complete documents containing forms, scripts, styles, tables, embedded content, and unsupported elements.
+
+  Most inputs should be generated as properly nested element trees with matching closing tags for non-void elements and no closing tags for void
+  elements. Deliberately generate a smaller proportion of malformed inputs through mutations of Stream 1, corpus samples, and independently generated
+  HTML. Include missing or extra closing tags, truncated tags, unquoted attributes, invalid nesting, NUL (`\0`), empty input, and random bytes decoded
+  as UTF-8 with replacement characters for invalid sequences.
+
+   Stream 2 may reach 32 nesting levels. All inputs remain subject to the 64 KiB limit and must be tested for stack overflow, panics, and timeouts.
+
+Mutations operate on the input string instead of a parsed DOM. A tag delimited substring is an opening tag
+though its matching closer in the seed string. HTML void elements (such as br, hr, img, and input) count as
+an opening tag through the ending of the the tag with no closer. Operations on a seed: delete a substring whose endpoints are UTF-8
+char boundaries, insert an arbitrary tag or character, duplicate a tag-delimited substring, swap two adjacent tag-delimited sibling
+substrings, or replace a named character reference with its raw character or the reverse. 
+If the seed has no matching closer, skip duplicate and sibling-swap; still apply delete, insert, and named-reference replacement.
+
+Arbitrary Stream 2 inputs are not required to preserve their original HTML structure during translation.
+Stream 2 inputs receive only Priorities 1–2, except where the generator table explicitly specifies an additional check. 
+Matching a specification-table input does not change the fuzz oracle; its expected output is checked independently by deterministic tests.
 
 #### Oracle
 
-**Stream class at check time:** label an input **Stream 1** if it satisfies
-the structured HTML grammar in Generator stream 1 above (regardless of
-whether stream 2 mutations produced it). All other inputs are **Stream 2**.
+The oracle determines whether a generated HTML input causes htmd to fail or produces a translation inconsistent with this specification. It checks conversion failures for both streams and HTML round-trip correctness for eligible Stream 1 inputs.
 
-Call `convert` in a thread or a child of the test binary with a 2-second
-timeout per input. Classify the result in this order; the first match is
-the finding:
+**Stream class at check time**: Classify an input as **Stream 1** if it satisfies the structured HTML grammar defined in Generator Stream 1, regardless of which stream originally generated it. All other inputs are classified as **Stream 2**.
+
+1. Pass the generated HTML input to convert using TranslationMode::Faithful, with a 2-second timeout. Record any panic, process abort, timeout, or returned Err.
+
+2. For eligible Stream 1 inputs, render the generated Markdown back into HTML using render_markdown from `tests/common/mod.rs`. Render using `render_markdown` from `tests/common/mod.rs`, passing these pulldown-cmark options:
+      CommonMarkOptions::ENABLE_TABLES
+        | CommonMarkOptions::ENABLE_TASKLISTS
+        | CommonMarkOptions::ENABLE_MATH
+
+3. Parse both the original HTML and the rendered HTML into DOM fragments using html5ever, with <div> as the context element for both.
+
+4. Compare the resulting DOM fragments recursively:
+
+    * Element names and namespaces must match.
+
+    * Attributes must have identical names and values; attribute order does not matter.
+
+    * Child elements must appear in the same order.
+
+    * Collapsable whitespace includes tab, LF, form feed, CR, and space.
+
+    * Formatting whitespace should only be ignored at fragment boundaries and between block children in containers restricted to block children.
+
+    * Unicode whitespace should be preserved along with literal content in `pre`, `code`, and math, and attribute values.
+
+    * Ignore parser-inserted document wrappers and implied <tbody> elements where they do not represent a meaningful structural difference.
+
+
+Call `convert` in a child process of the test binary, enforcing a 2-second timeout per input. Terminate the process if the timeout is exceeded. Evaluate the results in the following order:
 
 | Priority | Result | Finding? |
 | --- | --- | --- |
 | 1 | Process abort, panic, or timeout | **Yes.** Save the input. |
-| 2 | `convert` returns `Err` | **Yes.** `html_to_tree` currently always returns `Ok`, so `convert` does not return `Err`. This document names no input as an expected `io::Error`. A panic inside parsing or walking is still priority 1. |
-| 3 | Stream 1, and the input equals (or normalizes to) an HTML cell in a specification table with Expected output, or appears in `tests/translation_approach_tests.rs` | **Yes** if Markdown ≠ Faithful expected (or the Pure column when the run set `TranslationMode::Pure`). Generator-table rows alone do not trigger priority 3 unless the same payload also appears in such a specification table. |
-| 4 | Stream 1, not covered by priority 3 | Write Faithful Markdown, then `render_markdown` from `tests/common/mod.rs`. Parse the **input** HTML and that round-trip HTML as fragments with `html5ever`, using `<div>` as the context element for both. **Yes** if those DOM fragments are not equivalent: same local tag names in the same child order, same text in text nodes (no trimming or newline collapse), same attribute local names and values on each element; ignore parser-inserted document wrappers, attribute order among siblings, and implied `<tbody>`. Do not strcmp the `round_trip` source string, and do not demand byte-identical Markdown. |
-| 5 | Stream 2 (broken HTML) | Only priorities 1–2. There is no unique “correct Markdown” for garbage. |
+| 2 | `convert` returns `Err` | **Yes.** html_to_tree currently always returns Ok, and this specification defines no expected io::Error for generated inputs.|
+| 3 | Stream 1 HTML round-trip comparison | **Yes** if the input's DOM differs from its round-tripped DOM under the comparison rules below. Convert the input to Faithful Markdown, render it using render_markdown from tests/common/mod.rs, and parse both the original and rendered HTML as fragments with html5ever, using <div> as the context element. Compare element names, child order, text-node content, and attribute names and values. Ignore parser-inserted document wrappers, attribute order, and implied <tbody> elements. Inputs whose translation is explicitly documented as lossy or unspecified are exempt from this comparison and remain subject to Priorities 1–2. Do not require byte-identical Markdown.|
+| 4 | No preceding finding| **No** The input passes the applicable checks. Stream 2 inputs are checked only under Priorities 1–2.|
 
-Do not flag a difference from turndown.js unless the case already lives in
-`tests/turndown_cases_tests.rs`. htmd's Faithful mode is specified here, not
-by turndown.
+Existing specification examples and regression tests may be used as generator seeds but are verified independently through deterministic tests. Do not flag a difference from turndown.js unless the case already exists in `tests/turndown_cases_tests.rs.` The expected behavior of Faithful mode is defined by this specification, not by turndown.js.
 
 #### HTML the generator must include
 
@@ -973,8 +987,10 @@ classification.
 | Kind | Example payload | Oracle |
 | --- | --- | --- |
 | Empty | `""` | Must return `Ok`; panic, timeout, abort, or `Err` is a finding |
-| Whitespace only | `"   \n\t"` | Must return `Ok`; panic, timeout, abort, or `Err` is a finding |
-| Unclosed tag | `"<p>hello"` | Priority 1–2 only |
+| Whitespace only (ASCII) | `"   \n\t"` | Must return `Ok`; panic, timeout, abort, or `Err` is a finding |
+| Whitespace only (Unicode)| `"\u{00A0}\u{2003}\u{202F}\u{3000}"` | Must return `Ok`; panic, timeout, abort, or `Err` is a finding  |
+| Mixed ASCII and Unicode whitespace | `" \t\u{00A0}\n\u{2028}\u{2029} "` | Must return `Ok`; panic, timeout, abort, or `Err` is a finding |
+| Optional closing tag | `"<p>hello"` and `"<p>hello</p>"` | Both must return `Ok` and produce identical Markdown, since both parse to the same DOM fragment. |
 | Extra closer | `"hello</p>"` | Priority 1–2 only |
 | Nested anchors | `"<a href=a><a href=b>x</a></a>"` | Priority 1–2 only |
 | Unquoted attr | `"<a href=http://x y>z</a>"` | Priority 1–2 only |

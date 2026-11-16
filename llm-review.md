@@ -1,6 +1,6 @@
 # LLM review — Fuzzer section
 
-Each round prompted an LLM with `Review the section named "Fuzzer" in translation_approach.md`; strikethrough indicates LLM output that I deemed incorrect or irrelevant. Round 1 used Grok 4.6; Round 2 used GPT-5.5; Round 3 used Claude Sonnet 4.6; Round 4 used Grok 4.6; Round 5 used Gemini 2.5 Flash; Round 6 used Claude Sonnet 4.6.
+Each round prompted an LLM with `Review the section named "Fuzzer" in translation_approach.md`; strikethrough indicates LLM output that I deemed incorrect or irrelevant. Round 1 used Grok 4.6; Round 2 used GPT-5.5; Round 3 used Claude Sonnet 4.6; Round 4 used Grok 4.6; Round 5 used Gemini 2.5 Flash; Round 6 used Claude Sonnet 4.6; Round 8 used Codex; Round 9 used Codex for a follow-up on this session's revisions.
 
 The LLM must not edit the spec in the same step as the review. Spec fixes from applied findings are in `translation_approach.md` (`### Fuzzer`).
 
@@ -15,6 +15,8 @@ The LLM must not edit the spec in the same step as the review. Spec fixes from a
 | 4 (used Grok 4.6)          | 4        | Stream 1 generator-table payloads stay verbatim (raw `<` in `"<p>3 < 4</p>"`); stream 1 root must parse under `<div>` (no bare `td`/`tr`/`th`/`li`); tag-delimited substring defined, skip duplicate/swap on unmatched tags; Pure run only for spec-table rows with a Pure expected column |
 | 5 (used Gemini 2.5 Flash)  | 4        | Stream class at oracle time via structured grammar, not mutation provenance; priority 3 only on specification tables with Expected, not generator-table rows alone; priority 4 DOM equivalence defined; corpus seeds limited to those specification tables |
 | 6 (used Claude Sonnet 4.6) | 2        | Void/self-closing tags in tag-delimited mutations; CI time cap is wall-clock for the whole fuzz job |
+| 8 (used Codex 6.1-Sol Extra High)            | 4        | Bare root text and phrasing content receive only priorities 1–2, with separate paragraph-wrapped variants for round-trip checks; whitespace comparison rules added; timeout consistently requires a child process; specification-table expected outputs delegated to deterministic tests. Whitespace details and generator-table consistency edits remain pending. |
+| 9 (used Codex 6.1-Sol Extra High)            | 4  | Deletion mutations use substrings with endpoints at UTF-8 character boundaries; rendering explicitly enables tables, task lists, and math; the whitespace set and locations where formatting whitespace may be ignored are specified; Unicode whitespace, literal content, and attribute values are preserved. Unapplied recommendations are crossed out in the Round 9 description. |
 
 
 Compile/run evidence per team member is in [`submission.md`](submission.md) (Project 2 draft).
@@ -132,3 +134,59 @@ Numbered findings; only issues where two implementers of this section would dive
 ~~2. Remove the 64 KiB cap as unrealistic.~~ The cap is explicit and the huge-attribute row exercises it.
 
 ~~3. Require every contributor to use the same LLM for all rounds.~~ Each round records model and prompt; mixed models are fine.
+
+## Round 8
+
+Reviewer: Codex. Prompt: `Review the section named "Fuzzer" in translation_approach.md`. Follow-up: `How should these suggestions be implemented? Do not edit the file.`
+
+This entry records only this session's four findings, implementation guidance, and revisions subsequently visible in `translation_approach.md`. The review and guidance did not edit the specification; this documentation step changes only `llm-review.md`.
+
+Numbered findings:
+
+1. DOM comparison rejects valid inline roots. Stream 1 permits `<em>x</em>`, which translates to `*x*` and renders as `<p><em>x</em></p>`. The added paragraph is not a parser-inserted document wrapper, so the strict comparison reports a valid translation as a finding.
+2. Whitespace equivalence is undefined. The comparator permits unspecified whitespace differences, while rendering even `<p>x</p>` adds a trailing newline and therefore another fragment text node. Implementers could either report valid output or normalize away significant spacing.
+3. Timeout instructions conflict. The introduction permits a thread or child process, but the Oracle requires a terminable child process. A thread timeout leaves the conversion running and cannot isolate a process abort.
+4. Specification-table expected-output exceptions conflict with the priority table. The Stream 2 paragraph implies extra checks for specification-table matches, while priority 4 limits Stream 2 to conversion failures and the following paragraph delegates examples to deterministic tests.
+
+Main changes made to the specification during this session:
+
+1. Round-trip eligibility now excludes Stream 1 inputs with text or phrasing content directly at the fragment root. These receive priorities 1–2; separate paragraph-wrapped variants provide round-trip coverage. Corpus seeds remain verbatim.
+2. The comparison rules now mention ignoring ASCII-whitespace-only text nodes, collapsing ordinary whitespace, and preserving separating whitespace and literal text. This begins implementing the proposed context-sensitive normalization; the remaining details are listed below.
+3. The introduction now requires a child process of the test binary. The parent enforces a 2-second deadline, terminates and waits for a timed-out child, records the failing input, and continues. This agrees with the Oracle's process requirement.
+4. The Stream 2 paragraph now delegates specification-table expected outputs to deterministic tests. Only explicit additional checks in the generator table override the usual priorities 1–2.
+
+Remaining follow-ups from this round's guidance:
+
+* Scope ignored whitespace-only nodes to fragment boundaries and gaps between block children in block-only containers. Specify tab, LF, form feed, CR, and space; preserve Unicode whitespace and significant inline separators; apply documented emphasis-edge whitespace movement. Clarify preservation of attribute values (the current wording says "absolute values").
+* Make priority 3 reference the authoritative comparison rules instead of duplicating them. The table still refers to rules "below" although they appear above it.
+* Remove the Comment / CDATA row's specification-table expected-output exception and replace the Math span row's "expected follows the Math section" with explicit applicable checks. Retain the optional-closing-tag row's paired Markdown-equivalence check.
+
+Status: Revisions partially applied; the follow-ups above remain. Validation was a static review of the specification, converter, and existing tests. Cargo was unavailable, so no build, Clippy, or test run was performed. No converter or fuzzer implementation changed in this session.
+
+## Round 9
+
+Reviewer: Codex. Scope: document this session's specification revisions and the disposition of the Round 8 recommendations, using the latest saved version of `translation_approach.md`. This follows up on the four findings already recorded in Round 8 and includes the saved mutation-safety clarification. Earlier rounds are retained as historical records.
+
+Findings and disposition:
+
+1. Inline-root DOM comparison. The Round 8 restriction remains: bare root text and phrasing content receive priorities 1–2, with separate paragraph-wrapped variants for round-trip checks. No additional change was made for this finding in Round 9.
+2. Whitespace equivalence. The revised comparator now specifies tab, LF, form feed, CR, and space as collapsible whitespace. Ignored formatting whitespace is restricted to fragment boundaries and gaps between block children in block-only containers. Unicode whitespace, literal content in `pre`, `code`, and math, and attribute values are explicitly preserved.
+3. Timeout isolation. The child-process requirement, 2-second deadline, and termination and waiting behavior recorded in Round 8 remain in place. No additional timeout change was made in Round 9.
+4. Expected-output checks. The Stream 2 paragraph continues to delegate specification-table expected outputs to deterministic tests. The recommended changes to the Comment / CDATA and Math span generator-table rows were not applied; their existing wording remains.
+
+Main changes made since the Round 8 entry during this session:
+
+* Deletion mutations now remove a substring whose endpoints are UTF-8 character boundaries, replacing the earlier "delete a byte slice" instruction. This preserves valid UTF-8 when mutating generated inputs containing Unicode characters.
+* Markdown rendering now explicitly passes `CommonMarkOptions::ENABLE_TABLES`, `CommonMarkOptions::ENABLE_TASKLISTS`, and `CommonMarkOptions::ENABLE_MATH` to `render_markdown`.
+* The whitespace comparison text now names the five collapsible characters and limits ignored formatting whitespace to the structural locations described above.
+* Preservation of Unicode whitespace, literal content, and attribute values is explicit; the earlier "absolute values" wording has been replaced with "attribute values".
+
+Recommendations ignored in this revision are crossed out below. Here, strikethrough records that a recommendation was not applied; no reason for omitting it was provided.
+
+~~5. Specify ordinary-text whitespace collapsing and block-boundary trimming, preserve inline separator spaces explicitly, and apply documented emphasis-edge whitespace movement.~~ The current bullets define the whitespace set and formatting-whitespace locations but do not state these remaining normalization rules explicitly.
+
+~~6. Make priority 3 reference the authoritative comparison rules instead of duplicating them, and correct its reference from "below" to "above".~~ Priority 3 retains the duplicated instructions and the reference to rules "below".
+
+~~7. Remove the Comment / CDATA row's specification-table expected-output exception and replace the Math span row's "expected follows the Math section" with explicit applicable checks.~~ Both rows retain their existing wording. The optional-closing-tag row's paired Markdown-equivalence check remains in place.
+
+Validation: Reread the latest saved specification and compared it with this session's Round 8 record and the previous Round 9 summary. The three crossed-out recommendations remain unapplied in that saved version. This documentation step changes only `llm-review.md`; no converter, fuzzer, or specification edit was made by the assistant. No build, Clippy, or test run was performed for this documentation update.
