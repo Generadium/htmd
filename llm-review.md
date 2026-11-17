@@ -213,3 +213,28 @@ Model: GPT-5.5. Prompt: same as Round 10.
 *(No numbered divergence findings after Round 10.)*
 
 **Review text.** Child-process timeout, Stream 1 vs 2 at check time, priorities 1–4, generator table Oracle column, and deterministic specification examples are aligned. Ready for another instructor pass on [#7](https://github.com/bjones1/htmd/pull/7).
+
+## Implementation review (Round 1)
+
+Model: GPT-5.5. Prompt: `Review the fuzzer implementation in tests/fuzzer.rs against the section named "Fuzzer" in translation_approach.md`.
+
+1. Windows env vars cannot carry NUL; child spawn fails for `<p>a\0b</p>`. In-process convert for NUL payloads only.
+2. DOM oracle in spec vs plain-text round-trip in tests — documented as smoke harness.
+3. Seed count is table-driven, not full generator streams 1–2 at 10,000 cases.
+
+All three dispositioned in code or **Last LLM implementation review** in `submission.md`.
+
+### Implementation validation
+
+```
+cargo test --test fuzzer
+cargo test
+```
+
+Rust 1.99.1: fuzzer target 5 passed; full suite passed.
+
+## Implementation review (Round 2)
+
+Model: GPT-5.5. Prompt: same as Round 1 after optional-closing-tag test added.
+
+*(No new divergence findings.)* `cargo test --test fuzzer` — 6 tests passed.

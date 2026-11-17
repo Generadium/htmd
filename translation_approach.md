@@ -1017,8 +1017,9 @@ cargo test
 cargo build
 ```
 
-The fuzzer itself is a later binary or `cargo test` target; this section is
-the spec for that target. A fuzzer finding is added to the existing test
+The fuzzer is implemented as the integration test target `fuzzer` (`tests/fuzzer.rs`).
+A full libFuzzer binary may follow later; CI and local verification use
+`cargo test --test fuzzer`. A fuzzer finding is added to the existing test
 tables as an `#[ignore]` test until the bug is confirmed fixed; it must not
 disappear as a silent log line. `cargo test` (without `--ignored`) must keep
 passing.

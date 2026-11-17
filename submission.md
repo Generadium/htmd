@@ -8,7 +8,7 @@ Reviews: [`llm-review.md`](llm-review.md). Pull request:
 ### Contributions
 
 * **Robert:** First draft, Jones oracle revision, LLM rounds 8–9 (Codex), team coordination.
-* **Yerassyl:** LLM rounds 2, 5, 6, 10; `submission.md`; spec follow-ups after Jones review.
+* **Yerassyl:** LLM rounds 2, 5, 6, 10; spec follow-ups after Jones; `submission.md`; fuzzer `tests/fuzzer.rs`; final Project 2 submission integration and push to `main`.
 * **Alinur:** Complete fuzzer spec, LLM rounds 3 and 7.
 * **Kurmanbek:** LLM rounds 1 and 4.
 
@@ -54,7 +54,17 @@ ran successfully.
 
 | Round | Findings | Main changes made |
 | ----- | -------- | ----------------- |
-| — | — | Fuzzer `cargo test` target not landed yet; spec and `submission.md` updated for instructor re-review. Task-list implementation remains in the same PR from earlier project work. |
+| 1 | 3 | Added `tests/fuzzer.rs`: generator-table seeds, child-process convert with 2s timeout, round-trip check for eligible Stream 1; NUL via in-process convert on Windows env limits; documented `cargo test --test fuzzer` in spec **Run** |
+| 2 | 0 | Optional-closing-tag generator row test; `cargo test` / `cargo test --test fuzzer` green; submission and `llm-review` implementation section complete |
+
+### Compiler test (implementation)
+
+Prompt: *Review the fuzzer implementation in tests/fuzzer.rs against the Fuzzer section.*
+
+#### Yerassyl
+
+**GPT-5.5**, after adding `tests/fuzzer.rs`: `cargo test --test fuzzer` — 6 passed;
+full `cargo test` — passed (Rust 1.99.1).
 
 ### Last LLM spec review
 
@@ -66,5 +76,16 @@ translation_approach.md`.
 
 ### Last LLM implementation review
 
-Not applicable until the fuzzer test target exists per **Run** in the Fuzzer
-section.
+Model: **GPT-5.5**. Prompt: `Review the fuzzer implementation in tests/fuzzer.rs
+against the section named "Fuzzer" in translation_approach.md`.
+
+1. Child process cannot pass NUL through the environment on Windows; one
+   implementer skips child for `\0` payloads, another base64-encodes env. **Applied:**
+   in-process convert for NUL only.
+2. Round-trip comparison uses collapsed plain text, not full DOM equivalence from
+   the spec. **Accepted** as first harness; DOM walk deferred.
+3. Generator run uses fixed seeds, not 10,000 cases or mutations library. **Accepted**
+   for CI smoke; volume stays behind `cargo test --test fuzzer` until libFuzzer.
+
+~~4. Remove child-process requirement.~~ Spec still requires child for normal
+payloads; harness spawns `run_convert_worker`.
