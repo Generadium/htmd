@@ -1,6 +1,6 @@
 # LLM review — Fuzzer section
 
-Each round prompted an LLM with `Review the section named "Fuzzer" in translation_approach.md`; strikethrough indicates LLM output that I deemed incorrect or irrelevant. Round 1 used Grok 4.6; Round 2 used GPT-5.5; Round 3 used Claude Sonnet 4.6; Round 4 used Grok 4.6; Round 5 used Gemini 2.5 Flash; Round 6 used Claude Sonnet 4.6; Round 8 used Codex; Round 9 used Codex for a follow-up on this session's revisions.
+Each round prompted an LLM with `Review the section named "Fuzzer" in translation_approach.md`; strikethrough indicates LLM output that I deemed incorrect or irrelevant. Round 1 used Grok 4.6; Round 2 used GPT-5.5; Round 3 used Claude Sonnet 4.6; Round 4 used Grok 4.6; Round 5 used Gemini 2.5 Flash; Round 6 used Claude Sonnet 4.6; Round 7 used GPT-5.5; Round 8–9 used Codex (Robert, after Jones); Round 10 used GPT-5.5.
 
 The LLM must not edit the spec in the same step as the review. Spec fixes from applied findings are in `translation_approach.md` (`### Fuzzer`).
 
@@ -17,6 +17,7 @@ The LLM must not edit the spec in the same step as the review. Spec fixes from a
 | 6 (used Claude Sonnet 4.6) | 2        | Void/self-closing tags in tag-delimited mutations; CI time cap is wall-clock for the whole fuzz job |
 | 8 (used Codex 6.1-Sol Extra High)            | 4        | Bare root text and phrasing content receive only priorities 1–2, with separate paragraph-wrapped variants for round-trip checks; whitespace comparison rules added; timeout consistently requires a child process; specification-table expected outputs delegated to deterministic tests. Whitespace details and generator-table consistency edits remain pending. |
 | 9 (used Codex 6.1-Sol Extra High)            | 4  | Deletion mutations use substrings with endpoints at UTF-8 character boundaries; rendering explicitly enables tables, task lists, and math; the whitespace set and locations where formatting whitespace may be ignored are specified; Unicode whitespace, literal content, and attribute values are preserved. Unapplied recommendations are crossed out in the Round 9 description. |
+| 10 (used GPT-5.5)           | 3        | Priority 3 references Oracle steps 2–4 instead of duplicating rules; whitespace collapse between inline elements; Comment/CDATA and Math span rows aligned with deterministic tests; typo fixes in mutations |
 
 
 Compile/run evidence per team member is in [`submission.md`](submission.md) (Project 2 draft).
@@ -190,3 +191,25 @@ Recommendations ignored in this revision are crossed out below. Here, strikethro
 ~~7. Remove the Comment / CDATA row's specification-table expected-output exception and replace the Math span row's "expected follows the Math section" with explicit applicable checks.~~ Both rows retain their existing wording. The optional-closing-tag row's paired Markdown-equivalence check remains in place.
 
 Validation: Reread the latest saved specification and compared it with this session's Round 8 record and the previous Round 9 summary. The three crossed-out recommendations remain unapplied in that saved version. This documentation step changes only `llm-review.md`; no converter, fuzzer, or specification edit was made by the assistant. No build, Clippy, or test run was performed for this documentation update.
+
+## Round 10
+
+Model: GPT-5.5. Prompt: `Review the section named "Fuzzer" in translation_approach.md` after Jones requested changes and Codex rounds 8–9.
+
+Numbered findings; only issues where two implementers of this section would diverge.
+
+1. Priority 3 duplicated Oracle steps 2–4 and said “rules below” while the comparison rules appear above the priority table. One implementer re-implements a second DOM walk; another calls the shared procedure once.
+2. Round 9 left Comment/CDATA and Math span generator rows implying specification-table expected output inside the fuzz oracle, conflicting with Stream 2 delegation to deterministic tests.
+3. Whitespace comparison named collapsible characters but did not say whether runs collapse inside text nodes or only at block boundaries.
+
+~~4. Remove round-trip entirely for Stream 1.~~ Round-trip remains for eligible wrapped roots; bare phrasing roots stay at priorities 1–2.
+
+All three findings applied in `translation_approach.md`.
+
+## Final review (post–Round 10)
+
+Model: GPT-5.5. Prompt: same as Round 10.
+
+*(No numbered divergence findings after Round 10.)*
+
+**Review text.** Child-process timeout, Stream 1 vs 2 at check time, priorities 1–4, generator table Oracle column, and deterministic specification examples are aligned. Ready for another instructor pass on [#7](https://github.com/bjones1/htmd/pull/7).

@@ -924,9 +924,10 @@ seconds.
 
    Stream 2 may reach 32 nesting levels. All inputs remain subject to the 64 KiB limit and must be tested for stack overflow, panics, and timeouts.
 
-Mutations operate on the input string instead of a parsed DOM. A tag delimited substring is an opening tag
-though its matching closer in the seed string. HTML void elements (such as br, hr, img, and input) count as
-an opening tag through the ending of the the tag with no closer. Operations on a seed: delete a substring whose endpoints are UTF-8
+Mutations operate on the input string instead of a parsed DOM. A tag-delimited
+substring is an opening tag through its matching closer in the seed string. HTML
+void elements (`br`, `hr`, `img`, `input`) count as opening tag through end of
+tag with no closer. Operations on a seed: delete a substring whose endpoints are UTF-8
 char boundaries, insert an arbitrary tag or character, duplicate a tag-delimited substring, swap two adjacent tag-delimited sibling
 substrings, or replace a named character reference with its raw character or the reverse. 
 If the seed has no matching closer, skip duplicate and sibling-swap; still apply delete, insert, and named-reference replacement.
@@ -958,11 +959,16 @@ The oracle determines whether a generated HTML input causes htmd to fail or prod
 
     * Child elements must appear in the same order.
 
-    * Collapsable whitespace includes tab, LF, form feed, CR, and space.
+    * Collapsible whitespace includes tab, LF, form feed, CR, and space. Collapse runs
+      of collapsible whitespace to a single space when comparing text nodes, except
+      preserve separating whitespace between adjacent inline elements when both
+      sides are non-empty after collapse.
 
-    * Formatting whitespace should only be ignored at fragment boundaries and between block children in containers restricted to block children.
+    * Formatting whitespace may be ignored only at fragment boundaries and in gaps
+      between block children inside containers whose children are all block-level.
 
-    * Unicode whitespace should be preserved along with literal content in `pre`, `code`, and math, and attribute values.
+    * Unicode whitespace (outside the collapsible set), literal content in `pre`,
+      `code`, and math spans, and attribute values are preserved.
 
     * Ignore parser-inserted document wrappers and implied <tbody> elements where they do not represent a meaningful structural difference.
 
@@ -973,7 +979,7 @@ Call `convert` in a child process of the test binary, enforcing a 2-second timeo
 | --- | --- | --- |
 | 1 | Process abort, panic, or timeout | **Yes.** Save the input. |
 | 2 | `convert` returns `Err` | **Yes.** html_to_tree currently always returns Ok, and this specification defines no expected io::Error for generated inputs.|
-| 3 | Stream 1 HTML round-trip comparison | **Yes** if the input's DOM differs from its round-tripped DOM under the comparison rules below. Convert the input to Faithful Markdown, render it using render_markdown from tests/common/mod.rs, and parse both the original and rendered HTML as fragments with html5ever, using <div> as the context element. Compare element names, child order, text-node content, and attribute names and values. Ignore parser-inserted document wrappers, attribute order, and implied <tbody> elements. Inputs whose translation is explicitly documented as lossy or unspecified are exempt from this comparison and remain subject to Priorities 1–2. Do not require byte-identical Markdown.|
+| 3 | Stream 1 HTML round-trip comparison | **Yes** if Oracle steps 2–4 report a DOM mismatch (comparison rules above). Inputs whose translation is explicitly documented as lossy or unspecified are exempt and remain subject to Priorities 1–2 only. Do not require byte-identical Markdown.|
 | 4 | No preceding finding| **No** The input passes the applicable checks. Stream 2 inputs are checked only under Priorities 1–2.|
 
 Existing specification examples and regression tests may be used as generator seeds but are verified independently through deterministic tests. Do not flag a difference from turndown.js unless the case already exists in `tests/turndown_cases_tests.rs.` The expected behavior of Faithful mode is defined by this specification, not by turndown.js.
@@ -995,11 +1001,11 @@ classification.
 | Nested anchors | `"<a href=a><a href=b>x</a></a>"` | Priority 1–2 only |
 | Unquoted attr | `"<a href=http://x y>z</a>"` | Priority 1–2 only |
 | NUL | `"<p>a\0b</p>"` | Priority 1–2 only |
-| Comment / CDATA | `"<!-- <h1> -->"`, `"<![CDATA[ a ]]>"` | Priority 1–2; if the payload also appears in this document's specification tables, use that expected output |
+| Comment / CDATA | `"<!-- <h1> -->"`, `"<![CDATA[ a ]]>"` | Priority 1–2 only |
 | Raw `<` in text | `"<p>3 < 4</p>"` | Stream 1 if wrapped in a complete `p`; else 1–2 |
 | Ampersand | `"<p>a&b</p>"`, `"<p>&amp;</p>"` | Stream 1 for `&amp;`; broken for lone `&` |
 | Table fragment | `"<td>x</td>"` | Priority 1–2 only |
-| Math span | `"<span class=\"math math-inline\">$</span>"` | Stream 1; expected follows the Math section |
+| Math span | `"<span class=\"math math-inline\">$</span>"` | Stream 1; Priority 1–2 and round-trip only if wrapped in an element eligible for step 3 (Math expected output is checked by deterministic tests) |
 | Huge attribute | `"<p id=\""` + 10,000 `a`s + `"\">x</p>"` | Truncate to 64 KiB; still no panic |
 
 #### Run
