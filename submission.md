@@ -1,91 +1,79 @@
-Project 2 submission — htmd fuzzer
-===================================
+Project 2 — final submission (htmd fuzzer)
+===========================================
 
 Specification: `### Fuzzer` in [`translation_approach.md`](translation_approach.md).
 Reviews: [`llm-review.md`](llm-review.md). Pull request:
-[bjones1/htmd#7](https://github.com/bjones1/htmd/pull/7).
+[bjones1/htmd#7](https://github.com/bjones1/htmd/pull/7) (same PR as draft).
+
+Draft compiler-check notes remain in commit `418294b` and earlier `submission.md`
+history.
 
 ### Contributions
 
-* **Robert:** First draft, Jones oracle revision, LLM rounds 8–9 (Codex), team coordination.
-* **Yerassyl:** LLM rounds 2, 5, 6, 10; spec follow-ups after Jones; `submission.md`; fuzzer `tests/fuzzer.rs`; final Project 2 submission integration and push to `main`.
-* **Alinur:** Complete fuzzer spec, LLM rounds 3 and 7.
-* **Kurmanbek:** LLM rounds 1 and 4.
+* **Robert:** Led post–Jones spec revision (`raf322: review revisions`) and Codex
+  rounds 8–9 in `llm-review.md`.
+* **Yerassyl:** `tests/fuzzer.rs` and fuzzer implementation (`y_suleimenov:
+  finalize fuzzer implementation and Project 2 submission`).
+* **Alinur:** Spec round 10 after Jones (`al_kabylzhaparov: fuzzer spec round 10
+  and submission update`); complete fuzzer spec and LLM round 7 (draft).
+* **Kurmanbek:** LLM rounds 1 and 4 (draft); Project 2 final `submission.md`
+  format and push to `main`.
 
-### Compiler test
+### Final specification review rounds
 
-Prompt: *Verify that you can compile and run the project in the current git repo.*
-
-#### Robert
-
-**Codex**, Rust **1.93.1**: `cargo build`, `cargo clippy -- --deny warnings`, and
-`cargo test` (279 passed, 1 ignored) succeeded; examples `simple` and `table`
-ran successfully.
-
-#### Yerassyl
-
-**Gemini 2.5 Flash**, Rust **1.99.1**: `cargo build` and `cargo test` (279 passed,
-1 ignored) succeeded on **Generadium/htmd**.
-
-#### Alinur
-
-**Claude Sonnet 4.6**, Rust **1.93.1**: `cargo build` and `cargo test` succeeded.
-
-#### Kurmanbek
-
-**Grok 4.6**, Rust **1.93.1**: `cargo build` and `cargo test` succeeded.
-
-### Spec review rounds
+*(Draft rounds 1–7 are in [`llm-review.md`](llm-review.md); not repeated here.)*
 
 | Round | Findings | Main changes made |
 | ----- | -------- | ----------------- |
-| 1 | 8 | Faithful default API; corpus seeds; oracle priorities 1–4 groundwork; generator table |
-| 2 | 4 | Text escaping; fragment `<div>` context; empty/whitespace rows |
-| 3 | 4 | String mutations; `#[ignore]` findings; fragment context |
-| 4 | 4 | Verbatim payloads; tag-delimited mutations; Pure scope |
-| 5 | 4 | Stream class at check time; priority 3 scope; DOM equivalence |
-| 6 | 2 | Void tags in mutations; CI wall-clock cap |
-| 7 | 0 | Final draft pass (no new spec edits) |
-| 8 | 4 | Jones follow-up: child process; inline-root round-trip rules; whitespace; oracle table simplification (Robert / Codex) |
-| 9 | 4 | UTF-8-safe deletes; pulldown options; whitespace detail (Robert / Codex) |
-| 10 | 3 | Priority 3 cross-reference; generator table rows; whitespace collapse (Yerassyl / GPT-5.5) |
+| 8 | 4 | After Jones CHANGES_REQUESTED: inline-root round-trip rules; child-process-only timeout; whitespace comparison draft; Stream 2 delegates spec-table expected output to deterministic tests (Robert / Codex) |
+| 9 | 4 | UTF-8-safe deletion mutations; pulldown tables/tasklists/math; whitespace set and block-boundary rules; crossed-out unapplied Codex items recorded (Robert / Codex) |
+| 10 | 3 | Priority 3 cross-ref to Oracle steps 2–4; Comment/CDATA and Math generator rows; whitespace collapse between inline elements (Yerassyl / GPT-5.5) |
 
 ### Implementation review rounds
 
 | Round | Findings | Main changes made |
 | ----- | -------- | ----------------- |
-| 1 | 3 | Added `tests/fuzzer.rs`: generator-table seeds, child-process convert with 2s timeout, round-trip check for eligible Stream 1; NUL via in-process convert on Windows env limits; documented `cargo test --test fuzzer` in spec **Run** |
-| 2 | 0 | Optional-closing-tag generator row test; `cargo test` / `cargo test --test fuzzer` green; submission and `llm-review` implementation section complete |
+| 1 | 3 | `tests/fuzzer.rs`: generator-table seeds, child `run_convert_worker` + 2s timeout, round-trip smoke for eligible Stream 1; NUL in-process on Windows |
+| 2 | 0 | Optional-closing-tag row; six fuzzer tests green; disposition recorded below |
 
-### Compiler test (implementation)
-
-Prompt: *Review the fuzzer implementation in tests/fuzzer.rs against the Fuzzer section.*
-
-#### Yerassyl
-
-**GPT-5.5**, after adding `tests/fuzzer.rs`: `cargo test --test fuzzer` — 6 passed;
-full `cargo test` — passed (Rust 1.99.1).
-
-### Last LLM spec review
+### Last LLM specification review
 
 Model: **GPT-5.5**. Prompt: `Review the section named "Fuzzer" in
-translation_approach.md`.
+translation_approach.md` (post–Round 10).
 
-*(No divergence findings after Round 10; see **Final review (post–Round 10)** in
-`llm-review.md`.)*
+Numbered findings from Round 10:
+
+1. Priority 3 duplicated Oracle steps 2–4 and said “rules below” while comparison
+   rules sit above the priority table. **Applied:** cross-reference to steps 2–4.
+2. Comment/CDATA and Math span rows implied specification-table expected output in
+   the fuzz oracle. **Applied:** aligned with deterministic tests / Stream 2.
+3. Whitespace comparison did not state whether runs collapse inside text nodes.
+   **Applied:** collapse rules between inline elements.
+
+~~4. Remove round-trip entirely for Stream 1.~~ Round-trip remains for eligible
+wrapped roots.
+
+**Final review (same model and prompt):** *(No further numbered divergence
+findings.)* Child-process timeout, Stream class at check time, priorities 1–4,
+generator Oracle column, and delegation of specification examples to deterministic
+tests are consistent in the saved spec.
 
 ### Last LLM implementation review
 
 Model: **GPT-5.5**. Prompt: `Review the fuzzer implementation in tests/fuzzer.rs
-against the section named "Fuzzer" in translation_approach.md`.
+against the section named "Fuzzer" in translation_approach.md` (Round 2).
 
-1. Child process cannot pass NUL through the environment on Windows; one
-   implementer skips child for `\0` payloads, another base64-encodes env. **Applied:**
-   in-process convert for NUL only.
-2. Round-trip comparison uses collapsed plain text, not full DOM equivalence from
-   the spec. **Accepted** as first harness; DOM walk deferred.
-3. Generator run uses fixed seeds, not 10,000 cases or mutations library. **Accepted**
-   for CI smoke; volume stays behind `cargo test --test fuzzer` until libFuzzer.
+*(No new divergence findings after optional-closing-tag coverage.)*
 
-~~4. Remove child-process requirement.~~ Spec still requires child for normal
-payloads; harness spawns `run_convert_worker`.
+`cargo test --test fuzzer` — 6 passed; full `cargo test` passed (Rust 1.99.1).
+
+Round 1 items (dispositioned for the harness scope):
+
+1. NUL in environment on Windows → in-process convert for `\0` only.
+2. Full DOM oracle in spec vs plain-text round-trip in tests → smoke harness;
+   DOM walk deferred.
+3. Fixed seeds vs 10k cases and mutation library → CI smoke; volume documented in
+   spec **Run**.
+
+~~4. Drop child-process requirement for all inputs.~~ Child process used for
+non-NUL payloads per spec.

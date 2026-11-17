@@ -20,7 +20,8 @@ The LLM must not edit the spec in the same step as the review. Spec fixes from a
 | 10 (used GPT-5.5)           | 3        | Priority 3 references Oracle steps 2–4 instead of duplicating rules; whitespace collapse between inline elements; Comment/CDATA and Math span rows aligned with deterministic tests; typo fixes in mutations |
 
 
-Compile/run evidence per team member is in [`submission.md`](submission.md) (Project 2 draft).
+Draft compile/run evidence per team member is in git history (`418294b`); final
+[`submission.md`](submission.md) follows the Project 2 final template.
 
 ## Round 1
 
